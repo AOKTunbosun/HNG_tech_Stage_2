@@ -1,7 +1,8 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from typing import Optional, List, Dict
-from core_files import database, models
+from core_files import database, models, image_utils
 import requests
 from datetime import datetime
 import random
@@ -118,7 +119,8 @@ def refresh(db: Session = Depends(get_db)):
             db.add(db_country)
 
         db.commit()
-    # db.refresh(existing_countries_query)
+    
+    image_bytes = image_utils.generate_countries_image(db)
 
     return {'detail': 'Country refresh completed'}
 
@@ -151,6 +153,17 @@ def fetch_from_db(region: str | None = None, currency: str | None = None, sort: 
         return countries
 
 
+@router.get('/image')
+def serve_image():
+    file_path = 'cache/summary.png'
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Image file not fount. Please refresh data first')
+    
+    return FileResponse(file_path, media_type='image/png', filename='countries_summary.png')
+
+
+
 @router.get('/{name}', status_code=status.HTTP_200_OK, response_model=models.Country)
 def single_country_by_name(name: str, db: Session = Depends(get_db)):
 
@@ -159,7 +172,11 @@ def single_country_by_name(name: str, db: Session = Depends(get_db)):
     country = db.exec(statement).first()
     # country.model_dump()
 
-    if country.currency_code is None or country.population is None:
+    if country is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail='Country not found')
+
+    elif country.currency_code is None or country.population is None:
         if country.currency_code is None and country.population is None:
 
             return {'error': 'Validation failed',
@@ -176,9 +193,7 @@ def single_country_by_name(name: str, db: Session = Depends(get_db)):
 
     elif country:
         return country
-    elif country is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail='Country not found')
+    
 
 
 @router.delete('/{name}', status_code=status.HTTP_204_NO_CONTENT)
@@ -195,6 +210,3 @@ def delete_country(name: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
 
-@router.get('/image')
-def serve_image():
-    pass
