@@ -4,8 +4,8 @@ from datetime import datetime
 
 
 class Country(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    name: str
+    id: int | None = Field(default=None, primary_key=True, index=True)
+    name: str = Field(index=True)
     capital: str | None
     region: str | None
     population: int

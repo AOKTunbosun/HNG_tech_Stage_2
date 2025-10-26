@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Optional, List, Dict
 from core_files import database, models
@@ -5,6 +6,8 @@ import requests
 from datetime import datetime
 import random
 from sqlmodel import Session, select, delete, and_, desc
+from dotenv import load_dotenv
+
 
 
 router = APIRouter(
@@ -14,8 +17,14 @@ router = APIRouter(
 
 get_db = database.get_session
 
+load_dotenv()
 
-@router.post('/refresh')
+COUNTRY_DETAILS_API = os.getenv('COUNTRY_DETAILS_API')
+COUNTRY_EXCHANGE_DETAILS_API = os.getenv('COUNTRY_EXCHANGE_DETAILS_API')
+
+
+
+@router.post('/refresh', status_code=status.HTTP_201_CREATED)
 def refresh(db: Session = Depends(get_db)):
     # Retrieving all data from db
     existing_countries_query = db.exec(select(models.Country)).all()
@@ -31,10 +40,8 @@ def refresh(db: Session = Depends(get_db)):
 
     # Getting data from external API
     try:
-        response = requests.get(
-            'https://restcountries.com/v2/all?fields=name,capital,region,population,flag,currencies')
-        exchange_response = requests.get(
-            'https://open.er-api.com/v6/latest/USD')
+        response = requests.get(COUNTRY_DETAILS_API)
+        exchange_response = requests.get(COUNTRY_EXCHANGE_DETAILS_API)
         response = response.json()
         exchange_response = exchange_response.json()
     except:
@@ -71,22 +78,26 @@ def refresh(db: Session = Depends(get_db)):
         if country_name in existing_map_keys:
             # To Update existing records
 
-            each_country_info = existing_map[country.name]
+            each_country_info = existing_map[country_name]
             if each_country_info in existing_countries_query:
-                each_country_info = each_country_info.model_dump()
-                # Remove existing record
-                db.exec(delete(models.Country).where(and_(models.Country.id == each_country_info.get(
-                    'id'),  models.Country.name == each_country_info.get('name'))))
-                db.commit()
 
-                each_country_info['population'] = population
-                each_country_info['exchange_rate'] = country_rate
-                each_country_info['estimated_gdp'] = estimated_gdp
-                each_country_info['last_refreshed_at'] = datetime.now()
+                country = db.get(models.Country, each_country_info.id)
 
-                each_country_info = models.Country.model_validate(each_country_info)
+                country_data = {
+                    'name': country_name,
+                    'capital': capital,
+                    'region': region,
+                    'population': population,
+                    'currency_code': currency_code,
+                    'exchange_rate': country_rate,
+                    'estimated_gdp': estimated_gdp,
+                    'flag_url': flag_url,
+                    'last_refreshed_at': datetime.now()
+                }
 
-                db.add(each_country_info)
+                for field, value in country_data.items():
+                    setattr(country, field, value)
+
                 db.commit()
 
         else:
@@ -100,53 +111,88 @@ def refresh(db: Session = Depends(get_db)):
                 'exchange_rate': country_rate,
                 'estimated_gdp': estimated_gdp,
                 'flag_url': flag_url,
-                'last_refreshed_at': datetime.utcnow()
+                'last_refreshed_at': datetime.now()
             }
 
             db_country = models.Country.model_validate(country_data)
             db.add(db_country)
 
-    db.commit()
+        db.commit()
     # db.refresh(existing_countries_query)
 
     return {'detail': 'Country refresh completed'}
 
 
-@router.get('')
+@router.get('', status_code=status.HTTP_200_OK)
 def fetch_from_db(region: str | None = None, currency: str | None = None, sort: str | None = None, db: Session = Depends(get_db)):
     if region and not currency and not sort:
-        countries = db.exec(select(models.Country).where(models.Country.region == region.strip().capitalize())).all()
+        countries = db.exec(select(models.Country).where(
+            models.Country.region == region.strip().capitalize())).all()
         return countries
-    
+
     elif currency and not region and not sort:
-        countries = db.exec(select(models.Country).where(models.Country.currency_code == currency.strip().upper())).all()
+        countries = db.exec(select(models.Country).where(
+            models.Country.currency_code == currency.strip().upper())).all()
         return countries
 
     elif sort and not region and not currency:
         if sort.strip().lower() == 'gdp_desc':
-            countries = db.exec(select(models.Country).order_by(desc(models.Country.estimated_gdp))).all()
+            countries = db.exec(select(models.Country).order_by(
+                desc(models.Country.estimated_gdp))).all()
             return countries
-        
+
         elif sort.strip().lower() == 'gdp_asc':
-            countries = db.exec(select(models.Country).order_by(models.Country.estimated_gdp)).all()
+            countries = db.exec(select(models.Country).order_by(
+                models.Country.estimated_gdp)).all()
             return countries
-    
-    else: 
+
+    else:
         countries = db.exec(select(models.Country)).all()
         return countries
 
 
-@router.get('/{name}')
+@router.get('/{name}', status_code=status.HTTP_200_OK, response_model=models.Country)
 def single_country_by_name(name: str, db: Session = Depends(get_db)):
-    country = db.exec(select(models.Country).where(models.Country.name == name.strip().capitalize())).first()
-    return country
+
+    statement = select(models.Country).where(
+        models.Country.name == name.strip().capitalize())
+    country = db.exec(statement).first()
+    # country.model_dump()
+
+    if country.currency_code is None or country.population is None:
+        if country.currency_code is None and country.population is None:
+
+            return {'error': 'Validation failed',
+                    'details': {'currency_code': 'is required', 'population': 'is required'}
+                    }, status.HTTP_400_BAD_REQUEST
+        elif country.currency_code is None:
+            return {'error': 'Validation failed',
+                    'details': {'currency_code': 'is required'}
+                    }, status.HTTP_400_BAD_REQUEST
+        elif country.population is None:
+            return {'error': 'Validation failed',
+                    'details': {'population': 'is required'}
+                    }, status.HTTP_400_BAD_REQUEST
+
+    elif country:
+        return country
+    elif country is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail='Country not found')
 
 
-@router.delete('/{name}')
+@router.delete('/{name}', status_code=status.HTTP_204_NO_CONTENT)
 def delete_country(name: str, db: Session = Depends(get_db)):
-    db.exec(delete(models.Country).where(models.Country.name == name.strip().capitalize()))
-    db.commit()
-    return 'Deleted'
+    country = db.exec(select(models.Country).where(
+        models.Country.name == name.strip().capitalize())).first()
+    if country:
+        db.exec(delete(models.Country).where(
+            models.Country.name == name.strip().capitalize()))
+        db.commit()
+        return {'detail': f"{name}'s record deleted"}
+
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
 
 @router.get('/image')

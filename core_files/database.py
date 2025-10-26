@@ -1,10 +1,21 @@
+import os
 from sqlmodel import create_engine, Session
 from . import models
+from dotenv import load_dotenv
 
-sqlite_file_name = 'database.db'
-sqlite_url = f'sqlite:///{sqlite_file_name}'
+load_dotenv()
 
-engine = create_engine(sqlite_url, echo=False)
+DB_HOST= os.getenv('DB_HOST')
+DB_PORT= os.getenv('DB_PORT')
+DB_USER= os.getenv('DB_USER')
+DB_PASSWORD= os.getenv('DB_PASSWORD')
+DB_NAME= os.getenv('DB_NAME')
+
+# sqlite_file_name = 'database.db'
+# DATABASE_URL = f'sqlite:///{sqlite_file_name}'
+DATABASE_URL = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+
+engine = create_engine(DATABASE_URL, echo=False)
 
 def create_db_and_tables():
     models.SQLModel.metadata.create_all(engine)
