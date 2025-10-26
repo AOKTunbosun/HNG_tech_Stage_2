@@ -13,6 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
+      - run: flyctl deploy --remote-only --build-arg COUNTRY_DETAILS_API=${{ secrets.COUNTRY_DETAILS_API }} --build-arg COUNTRY_EXCHANGE_DETAILS_API=${{ secrets.COUNTRY_EXCHANGE_DETAILS_API }} --build-arg DB_HOST=${{ secrets.DB_HOST}} --build-arg DB_PORT=${{ secrets.DB_PORT }} --build-arg DB_USER=${{ secrets.DB_USER }} --build-arg DB_PASSWORD=${{ secrets.DB_PASSWORD }} --build-arg DB_NAME=${{ secrets.DB_NAME }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
