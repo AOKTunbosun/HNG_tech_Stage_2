@@ -13,7 +13,7 @@ DB_NAME= os.getenv('DB_NAME')
 
 # sqlite_file_name = 'database.db'
 # DATABASE_URL = f'sqlite:///{sqlite_file_name}'
-DATABASE_URL = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+DATABASE_URL = os.getenv('DATABASE_URL')
 
 engine = create_engine(DATABASE_URL, echo=False)
 
