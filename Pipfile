@@ -12,6 +12,7 @@ aiomysql = "*"
 python-dotenv = "*"
 pillow = "*"
 requests = "*"
+cryptography = "*"
 
 [dev-packages]
 
